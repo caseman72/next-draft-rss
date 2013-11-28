@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "jsdom": "~0.8.8",
+    "request": "~2.27.0",
+    "express": "~3.4.4",
+    "underscore": "~1.5.2",
+    "string-utils-cwm": "~0.1.3"
+  }
+}
