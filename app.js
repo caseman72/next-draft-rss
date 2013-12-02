@@ -6,7 +6,7 @@ var jsdom = require("jsdom");
 
 var fs = require("fs");
 var jquery_source = fs.readFileSync(__dirname + "/public/js/jquery-2.0.3.min.js", "utf-8");
-var server_date_string = (new Date()).toString();
+var server_date_utc = (new Date()).toString().match(/\(UTC\)/) ? true : false;
 
 // process.env reduced by used keys
 var process_env = _.pick(process.env, "VCAP_APP_PORT", "VCAP_SERVICES", "NODE_DEBUG");
@@ -32,6 +32,7 @@ app.configure(function() {
 		.use(express.favicon(__dirname + "/public/images/favicon.ico"))
 		.use(express.mount(__dirname + "/public"))
 		.use(express.errorHandler({dumbExceptions: true}))
+		.disable('etag')
 		.enable("strict routing");
 });
 
@@ -41,8 +42,44 @@ app.get("/", function(req, res) {
 	res.send("Hello World! ({0})".format(host));
 });
 
+var short_month = function(index) {
+	var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+	return months[index].slice(0,3);
+};
+
+var pad_zeros = function(int) {
+	return ((+int < 10 ? "0" : "")+int);
+};
+
+var apache_log = function(req, res, len) {
+	var time_stamp = new Date();
+	var combined_log = '{ip} - - [{day}/{mon}/{year}:{hour}:{min}:{sec} {tz}] \"{method} {url} HTTP{s}/{v}" {code} {len} "{referer}" "{ua}"'.format({
+		ip: req.headers['X-Forwarded-For'] || req.connection.remoteAddress || "127.0.0.1", // IP, username, or not
+		day: pad_zeros(time_stamp.getUTCDate()),
+		mon: short_month(time_stamp.getMonth()),
+		year: time_stamp.getUTCFullYear(),
+		hour: pad_zeros(time_stamp.getUTCHours()),
+		min: pad_zeros(time_stamp.getUTCMinutes()),
+		sec: pad_zeros(time_stamp.getUTCSeconds()),
+		tz: "+0000",
+		method: req.method,
+		url: req.url,
+		s: req.connection.encrypte ? "S" : "",
+		v: req.httpVersion,
+		code: res.statusCode,
+		len: len || "-",
+		referer: req.headers["referer"] || req.headers["referrer"] || "-",
+		ua: req.headers["user-agent"]
+	});
+
+	// log to stdout
+	console.log( combined_log );
+};
+
 app.get("/rss.xml", function(req, res) {
 	res.set("Content-Type", "text/xml");
+
+	// TODO: check for etag and just respond / no grab
 
 	var host = req.headers.host || "localhost";
 
@@ -72,10 +109,11 @@ app.get("/rss.xml", function(req, res) {
 					var href = $link.attr("href");
 
 					var pub_parts = href.match(/\/n(\d{4})(\d{2})(\d{2})\//);
-					var pub_date = new Date(pub_parts[1], pub_parts[2]-1, pub_parts[3], (server_date_string.match(/\(UTC\)/) ? 28 : 20)-index, 0, 0, 0);
+					var pub_date = new Date(pub_parts[1], pub_parts[2]-1, pub_parts[3], (server_date_utc ? 28 : 20)-index, 0, 0, 0);
 					// "Fri Dec 27 2013 20:00:00 GMT-0800 (PST)" => "Wed, 27 Nov 2013 15:36:14 CST"
-					var pub_string = pub_date.toString().replace(/^(.{3}) /, "$1, ").replace(/ GMT[+-]\d{4} \(([A-Z]{3})\)$/, " $1");
+					var pub_string = pub_date.toString().replace(/^(.{3})([^,])/, "$1,$2").replace(/([ ])GMT[+-]\d{4}[ ]\(([A-Z]{3})\)$/, "$1$2");
 
+					// update item with values
 					$item
 						.find("title").html($link.text()).end()
 						.find("clink").html(href).end()
@@ -92,8 +130,8 @@ app.get("/rss.xml", function(req, res) {
 					.replace(/\<cdata\>/g, "<![CDATA[")
 					.replace(/\<\/cdata\>/g, "]]>");
 
-				// response
-				res.send([
+				// builg string
+				var res_string = [
 					'<?xml version="1.0" encoding="utf-8"?>',
 					'<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
 					'<channel>',
@@ -103,11 +141,13 @@ app.get("/rss.xml", function(req, res) {
 					'<atom:link href="http://{host}/rss.xml" rel="self" type="application/rss+xml"/>',
 					'{items}',
 					'</channel>',
-					'</rss>'].join("\n").format({
-						host: host,
-						items: items
-					})
-				);
+					'</rss>'].join("\n").format({host: host, items: items});
+
+				// log - always 200's
+				apache_log(req, res, res_string.length);
+
+				// response
+				res.send(res_string);
 			}
 		});
 	};
