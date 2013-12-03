@@ -54,7 +54,7 @@ var pad_zeros = function(int) {
 var apache_log = function(req, res, len) {
 	var time_stamp = new Date();
 	var combined_log = '{ip} - - [{day}/{mon}/{year}:{hour}:{min}:{sec} {tz}] \"{method} {url} HTTP{s}/{v}" {code} {len} "{referer}" "{ua}"'.format({
-		ip: req.headers['X-Forwarded-For'] || req.connection.remoteAddress || "127.0.0.1", // IP, username, or not
+		ip: req.headers["x-forwarded-for"] && req.headers["x-forwarded-for"].replace(/[ ]+|(?:,\s*127\.0\.0\.1)/g, "") || req.connection.remoteAddress || "127.0.0.1",
 		day: pad_zeros(time_stamp.getUTCDate()),
 		mon: short_month(time_stamp.getMonth()),
 		year: time_stamp.getUTCFullYear(),
