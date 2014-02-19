@@ -125,6 +125,9 @@ app.get("/rss.xml", function(req, res) {
 
 				// <link>, <pubDate> and CDATA are problems - so use alts and replace
 				var items = $channel.html()
+					.replace(/[&]nbsp;/g, "&#160;")
+					.replace(/[&]copy;/g, "&#169;")
+					.replace(/[&]reg;/g, "&#174;")
 					.replace(/clink\>/g, "link>")
 					.replace(/pubdate\>/g, "pubDate>")
 					.replace(/\<cdata\>/g, "<![CDATA[")
