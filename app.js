@@ -108,8 +108,9 @@ app.get("/rss.xml", function(req, res) {
 					var $link = $blurb.find("h3:first").remove().find("a:first");
 					var href = $link.attr("href");
 
-					var pub_parts = href.match(/\/n(\d{4})(\d{2})(\d{2})\//);
+					var pub_parts = href.match(/\/n(\d{4})(\d{2})(\d{2})([-][0-9]+)?\//);
 					var pub_date = new Date(pub_parts[1], pub_parts[2]-1, pub_parts[3], (server_date_utc ? 28 : 20)-index, 0, 0, 0);
+
 					// "Fri Dec 27 2013 20:00:00 GMT-0800 (PST)" => "Wed, 27 Nov 2013 15:36:14 CST"
 					var pub_string = pub_date.toString().replace(/^(.{3})([^,])/, "$1,$2").replace(/([ ])GMT[+-]\d{4}[ ]\(([A-Z]{3})\)$/, "$1$2");
 
