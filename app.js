@@ -76,16 +76,81 @@ var apache_log = function(req, res, len) {
 	console.log( combined_log );
 };
 
-app.get("/rss.xml", function(req, res) {
-	res.set("Content-Type", "text/xml");
-
-	// TODO: check for etag and just respond / no grab
+app.get("/rss.htm", function(req, res) {
 
 	var host = req.headers.host || "localhost";
 
 	var request_callback = function(error, response, html) {
 		if (error && response.statusCode !== 200) {
-			// 500 error 
+			// 500 error
+			res.send("500: Internal Server Error", 500);
+			return;
+		}
+
+		// remove all (no)?script tags
+		html = html.replace(/<script[\s\S]+?<\/script>/g, "");
+		html = html.replace(/<noscript[\s\S]+?<\/noscript>/g, "");
+
+		jsdom.env({
+			html: html,
+			src: [jquery_source],
+			done: function (not_used_error, window) {
+				var $ = window.jQuery;
+				var $html = $("<div></div>");
+
+				$(".daily-blurb").each(function(index, blurb) {
+					var $item = $("<div><h3><a></a></h3><h5></h5><div class='blurb'></div></div>");
+
+					var $blurb = $(blurb).find(".blurb-content").find(".blurb-list-footer").remove().end();
+					var $link = $blurb.find("h3:first").remove().find("a:first");
+					var href = $link.attr("href");
+
+					var pub_parts = href.match(/\/n(\d{4})(\d{2})(\d{2})([-][0-9]+)?\//);
+					var pub_date = new Date(pub_parts[1], pub_parts[2]-1, pub_parts[3], (server_date_utc ? 28 : 20)-index, 0, 0, 0);
+
+					// "Fri Dec 27 2013 20:00:00 GMT-0800 (PST)" => "Wed, 27 Nov 2013 15:36:14 CST"
+					var pub_string = pub_date.toString().replace(/^(.{3})([^,])/, "$1,$2").replace(/([ ])GMT[+-]\d{4}[ ]\(([A-Z]{3})\)$/, "$1$2");
+
+					// update item with values
+					$item
+						.find("a")
+							.html($link.text())
+							.attr("href", href)
+							.attr("title", $link.text())
+						.end()
+						.find("h5").html(pub_string).end()
+						.find(".blurb").html($blurb.html()).end()
+						.appendTo($html);
+				});
+
+				// <link>, <pubDate> and CDATA are problems - so use alts and replace
+				var res_string = "<html><head></head><body>{0}<br><br><br><br><br></body></html>".format($html.html());
+
+				// log - always 200's
+				apache_log(req, res, res_string.length);
+
+				// response
+				res.send(res_string);
+			}
+		});
+	};
+
+	// get current nextdraft
+	request({
+		uri: "http://nextdraft.com/current/",
+		headers: _.pick(req.headers, "user-agent")
+	}, request_callback);
+
+});
+
+app.get("/rss.xml", function(req, res) {
+	res.set("Content-Type", "text/xml");
+
+	var host = req.headers.host || "localhost";
+
+	var request_callback = function(error, response, html) {
+		if (error && response.statusCode !== 200) {
+			// 500 error
 			res.send("500: Internal Server Error", 500);
 			return;
 		}
